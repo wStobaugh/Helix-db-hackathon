@@ -175,3 +175,102 @@ def run_agent(agent: Agent, message: str) -> str:
     """
     result = Runner.run_sync(agent, message)
     return str(result.final_output)
+
+
+if __name__ == "__main__":
+    """
+    Simple CLI test for the agent.
+
+    Assumes:
+    - OPENAI_API_KEY is set in your environment.
+    - The `agents` (openai-agents) package is installed and configured.
+
+    This will:
+    - Build a sample message with a team name, manager prompt, and fake raw
+      LinkedIn profile text.
+    - Call the agent.
+    - Print the raw output and, if valid, a pretty-printed JSON plan.
+    """
+
+    if not os.getenv("OPENAI_API_KEY"):
+        print("[WARN] OPENAI_API_KEY is not set; the agent call will likely fail.")
+
+    # Example inputs
+    team_name = "Applied ML Recsquad"
+    manager_prompt = """
+We need a small applied ML team to build and ship an internal recommendation
+engine for our HR platform within 6 months.
+
+Requirements:
+- 1 strong technical lead who is comfortable owning backend + ML architecture.
+- 1–2 ML engineers with experience in NLP and recommendation systems.
+- 1 frontend engineer to build an internal-facing dashboard.
+- People who are comfortable collaborating with HR business stakeholders.
+"""
+
+    # Fake "raw LinkedIn" text blob for testing
+    linkedin_raw = """
+CANDIDATE 1
+Name: Alice Smith
+LinkedIn:
+Senior backend + ML engineer at BigCorp.
+Experience: Python, FastAPI, distributed systems, recommendation engines,
+and mentoring junior engineers. Known as a calm, thoughtful leader.
+
+CANDIDATE 2
+Name: Bob Chen
+LinkedIn:
+Machine Learning Engineer focusing on NLP.
+Experience: PyTorch, HuggingFace, text classification, recommendation models.
+Enjoys pair programming and working in cross-functional teams.
+
+CANDIDATE 3
+Name: Carol Perez
+LinkedIn:
+Frontend engineer specializing in React and TypeScript dashboards.
+Experience: data-heavy internal tools, UX-focused work, and close
+collaboration with non-technical stakeholders.
+
+CANDIDATE 4
+Name: David Lee
+LinkedIn:
+Data engineer with strong SQL and ETL background, some Spark.
+Less experience with ML modeling, more with data pipelines and infra.
+"""
+
+    message = f"""
+TEAM_NAME:
+{team_name}
+
+MANAGER_PROMPT:
+{manager_prompt.strip()}
+
+CANDIDATES_RAW_LINKEDIN:
+{linkedin_raw.strip()}
+""".strip()
+
+    print("=== Sending message to HelixTeamBuilder agent ===")
+    print(message)
+    print("=================================================\n")
+
+    agent = init_agent()
+    try:
+        raw_output = run_agent(agent, message)
+    except Exception as e:
+        print(f"[ERROR] Agent call failed: {e}")
+        raise SystemExit(1)
+
+    print("=== Raw agent output ===")
+    print(raw_output)
+    print("========================\n")
+
+    # Try to parse as JSON and pretty-print
+    try:
+        plan = json.loads(raw_output)
+        print("=== Parsed plan (pretty JSON) ===")
+        print(json.dumps(plan, indent=2))
+        print("=================================")
+    except Exception as e:
+        print("[WARN] Failed to parse agent output as JSON.")
+        print(f"Reason: {e}")
+        # Show raw_output above; nothing else to do here.
