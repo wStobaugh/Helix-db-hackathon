@@ -1,10 +1,15 @@
 # app.py
 import os
+import json
 from typing import Any, Dict
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from helix_service import helix_add_user, init_helix_client
+from helix_service import (
+    helix_add_user,
+    init_helix_client,
+    apply_team_plan_to_helix,
+)
 from selenium_service import get_page_title
 from agents_service import init_agent, run_agent
 
@@ -39,7 +44,7 @@ def health() -> Any:
     )
 
 
-# --- HelixDB endpoints ---
+# --- HelixDB demo endpoint (legacy example) ---
 
 
 @app.route("/api/helix/users", methods=["POST"])
@@ -91,13 +96,14 @@ def api_selenium_title() -> Any:
     return jsonify(info)
 
 
-# --- OpenAI Agent endpoint ---
+# --- Generic OpenAI Agent endpoint (raw message passthrough) ---
 
 
 @app.route("/api/agent", methods=["POST"])
 def api_agent() -> Any:
     """
-    Send a message to the OpenAI Agent and return its response.
+    Send a raw message string to the OpenAI Agent and return its response.
+    This is a generic endpoint, mostly useful for debugging the agent.
     """
     data: Dict[str, Any] = request.get_json(force=True, silent=True) or {}
     message = data.get("message")
@@ -111,6 +117,98 @@ def api_agent() -> Any:
         return jsonify({"error": f"Agent error: {e}"}), 500
 
     return jsonify({"answer": answer})
+
+
+# --- Team-building endpoint: Agent + HelixDB integration ---
+
+
+@app.route("/api/team/build", methods=["POST"])
+def api_team_build() -> Any:
+    """
+    High-level endpoint:
+
+    INPUT JSON:
+    {
+      "team_name": "<desired team name>",
+      "manager_prompt": "<natural language description of the team you want>",
+      "linkedin_profiles": "<RAW pasted LinkedIn profile text for many people>"
+    }
+
+    FLOW:
+    - Build a structured message for the agent using these fields.
+    - Agent returns a JSON plan with "team_name", "team_text", "people", "queries".
+    - We apply plan["queries"] to HelixDB using apply_team_plan_to_helix.
+    - We return both the plan and the per-query Helix results.
+
+    This is the main endpoint your frontend should hit.
+    """
+    data: Dict[str, Any] = request.get_json(force=True, silent=True) or {}
+
+    team_name = data.get("team_name")
+    manager_prompt = data.get("manager_prompt")
+    # raw LinkedIn profile text blob
+    linkedin_raw = (
+        data.get("linkedin_profiles")
+        or data.get("linkedin_text")
+        or data.get("profiles_raw")
+    )
+
+    if not team_name or not manager_prompt or not linkedin_raw:
+        return jsonify(
+            {
+                "error": "team_name, manager_prompt, and linkedin_profiles (raw text) are required"
+            }
+        ), 400
+
+    # Build the message expected by the agent instructions.
+    # The agent knows to look for TEAM_NAME / MANAGER_PROMPT / CANDIDATES_RAW_LINKEDIN.
+    message = f"""
+TEAM_NAME:
+{team_name}
+
+MANAGER_PROMPT:
+{manager_prompt}
+
+CANDIDATES_RAW_LINKEDIN:
+{linkedin_raw}
+""".strip()
+
+    # 1) Call the agent to get the plan JSON (as a string)
+    try:
+        agent_output = run_agent(agent, message)
+    except Exception as e:
+        return jsonify({"error": f"Agent error: {e}"}), 500
+
+    # 2) Parse the plan JSON
+    try:
+        plan = json.loads(agent_output)
+    except Exception as e:
+        return jsonify(
+            {
+                "error": "Agent did not return valid JSON according to the expected schema.",
+                "details": str(e),
+                "raw_output": agent_output,
+            }
+        ), 500
+
+    # 3) Apply the plan to HelixDB
+    try:
+        helix_results = apply_team_plan_to_helix(plan)
+    except Exception as e:
+        return jsonify(
+            {
+                "error": f"Failed to apply plan to HelixDB: {e}",
+                "plan": plan,
+            }
+        ), 500
+
+    # 4) Return both the logical plan and execution results
+    return jsonify(
+        {
+            "plan": plan,
+            "helix_results": helix_results,
+        }
+    )
 
 
 # --- Entry point ---

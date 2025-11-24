@@ -1,6 +1,6 @@
 # helix_service.py
 import os
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import helix
 from helix.client import Query
@@ -32,8 +32,9 @@ def init_helix_client() -> helix.Client:
     return _db
 
 
-# --- Example query class (you'll need a matching HelixQL query on the DB side) ---
-# Docs pattern: define a HelixQL query (e.g. QUERY add_user) and mirror it here. :contentReference[oaicite:2]{index=2}
+# ---------------------------------------------------------------------------
+# Example "AddUser" query (you can keep this around as a demo or delete it)
+# ---------------------------------------------------------------------------
 
 class AddUser(Query):
     def __init__(self, name: str, age: int):
@@ -51,8 +52,90 @@ class AddUser(Query):
 
 
 def helix_add_user(name: str, age: int) -> Any:
+    """
+    Legacy demo helper. Not used by the new team-building flow.
+    """
     db = init_helix_client()
     return db.query(AddUser(name, age))
 
 
-# You can define more query classes + helpers here, e.g. vector insert/search, etc.
+# ---------------------------------------------------------------------------
+# Generic helpers for your team-building flow
+# ---------------------------------------------------------------------------
+
+def run_helix_query(query_name: str, args: Dict[str, Any]) -> Any:
+    """
+    Run a Helix query by name, using the simple string + dict API:
+
+        db.query("createPerson", {"name": "...", "tags": [...], "text": "..."})
+
+    This assumes the query name exists in your Helix .hx files.
+    """
+    db = init_helix_client()
+    # helix-py supports db.query("queryName", {"arg": value, ...})
+    return db.query(query_name, args)
+
+
+def apply_team_plan_to_helix(plan: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Given the JSON plan produced by the agent, apply it to HelixDB.
+
+    Expected plan shape (from agents_service.py instructions):
+
+    {
+      "team_name": "...",
+      "team_text": "...",
+      "people": [...],
+      "queries": [
+        {
+          "query_name": "createTeam",
+          "args": {"name": "...", "text": "..."}
+        },
+        ...
+      ]
+    }
+
+    This function:
+
+    - Iterates plan["queries"] in order
+    - Calls run_helix_query(query_name, args) for each
+    - Collects and returns the results, tagged with query_name
+    """
+    queries = plan.get("queries", [])
+    results: List[Dict[str, Any]] = []
+
+    for q in queries:
+        q_name = q.get("query_name")
+        q_args = q.get("args", {})
+
+        if not q_name:
+            # Skip malformed items rather than blowing up everything
+            results.append(
+                {
+                    "query_name": None,
+                    "error": "Missing query_name in plan item",
+                    "raw_item": q,
+                }
+            )
+            continue
+
+        try:
+            res = run_helix_query(q_name, q_args)
+            results.append(
+                {
+                    "query_name": q_name,
+                    "args": q_args,
+                    "result": res,
+                }
+            )
+        except Exception as e:
+            # Record the error but keep processing the remaining queries
+            results.append(
+                {
+                    "query_name": q_name,
+                    "args": q_args,
+                    "error": str(e),
+                }
+            )
+
+    return results
