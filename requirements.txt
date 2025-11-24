@@ -1,0 +1,5 @@
+flask
+helix-py
+selenium
+openai-agents
+python-dotenv

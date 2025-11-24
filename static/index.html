@@ -1,0 +1,54 @@
+<!-- static/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>HelixDB Hackathon App</title>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body>
+    <h1>HelixDB + Selenium + OpenAI Agents</h1>
+
+    <section>
+      <h2>HelixDB: Add User</h2>
+      <form id="helix-form">
+        <label>
+          Name:
+          <input type="text" id="helix-name" required />
+        </label>
+        <label>
+          Age:
+          <input type="number" id="helix-age" required />
+        </label>
+        <button type="submit">Add User</button>
+      </form>
+      <pre id="helix-result"></pre>
+    </section>
+
+    <section>
+      <h2>Selenium: Get Page Title</h2>
+      <form id="selenium-form">
+        <label>
+          URL:
+          <input type="url" id="selenium-url" placeholder="https://example.com" required />
+        </label>
+        <button type="submit">Fetch Title</button>
+      </form>
+      <pre id="selenium-result"></pre>
+    </section>
+
+    <section>
+      <h2>OpenAI Agent</h2>
+      <form id="agent-form">
+        <label>
+          Message:
+          <textarea id="agent-message" rows="3" required></textarea>
+        </label>
+        <button type="submit">Ask Agent</button>
+      </form>
+      <pre id="agent-result"></pre>
+    </section>
+
+    <script src="/static/js/app.js"></script>
+  </body>
+</html>
